@@ -151,10 +151,13 @@ func decrypt_file(filepath string, savepath string) error {
 		return err
 	}
 	ch := make(chan DecryptResult, 1)
+	total_count := 0
+	decrypted_count := 0
 	var wg sync.WaitGroup
 	for _, noteNode := range xmlquery.Find(doc, "//en-export/note") {
 		title := noteNode.SelectElement("title").InnerText()
 		contentNode := noteNode.SelectElement("content")
+		total_count++
 		if contentNode.SelectAttr("encoding") == "base64:aes" {
 			wg.Add(1)
 			go func() {
@@ -178,11 +181,13 @@ func decrypt_file(filepath string, savepath string) error {
 		if result.err != nil {
 			fmt.Printf("Note decryption failed, error: %s\n", result.err.Error())
 		} else {
+			decrypted_count++
 			contentNode := noteNode.SelectElement("content")
 			contentNode.FirstChild.Data = result.text
 			contentNode.RemoveAttr("encoding")
 		}
 	}
+	fmt.Printf("Decryption succeeded,%d notes decrypted,%d notes in total\n", decrypted_count, total_count)
 
 	outfile, err := os.OpenFile(savepath, os.O_CREATE, 0666)
 	if err != nil {
