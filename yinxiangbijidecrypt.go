@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/antchfx/xmlquery"
 )
@@ -141,6 +142,7 @@ func decrypt_note(content string) (string, error) {
 
 func decrypt_file(filepath string, savepath string) error {
 	fmt.Printf("Decrypting file: %s\n", filepath)
+	start_time := time.Now()
 	infile, err := os.OpenFile(filepath, os.O_RDONLY, 0666)
 	if err != nil {
 		return err
@@ -187,8 +189,9 @@ func decrypt_file(filepath string, savepath string) error {
 			contentNode.RemoveAttr("encoding")
 		}
 	}
+	elapsed_time := time.Since(start_time).Seconds()
 	fmt.Printf("Decryption succeeded,%d notes decrypted,%d notes in total\n", decrypted_count, total_count)
-
+	fmt.Printf("%.2f seconds elapsed\n", elapsed_time)
 	outfile, err := os.OpenFile(savepath, os.O_CREATE, 0666)
 	if err != nil {
 		return err
