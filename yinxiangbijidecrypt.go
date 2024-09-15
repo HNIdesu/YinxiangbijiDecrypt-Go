@@ -13,9 +13,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/antchfx/xmlquery"
 )
+
+type DecryptResult struct {
+	text string
+	node *xmlquery.Node
+	err  error
+}
 
 var HMAC_KEY = []byte("{22C58AC3-F1C7-4D96-8B88-5E4BBF505817}")
 
@@ -143,19 +150,40 @@ func decrypt_file(filepath string, savepath string) error {
 	if err != nil {
 		return err
 	}
+	ch := make(chan DecryptResult, 1)
+	var wg sync.WaitGroup
 	for _, noteNode := range xmlquery.Find(doc, "//en-export/note") {
 		title := noteNode.SelectElement("title").InnerText()
-		fmt.Printf("Decrypting note: %s\n", title)
 		contentNode := noteNode.SelectElement("content")
 		if contentNode.SelectAttr("encoding") == "base64:aes" {
-			raw_text, err := decrypt_note(contentNode.InnerText())
-			if err != nil {
-				return err
-			}
-			contentNode.FirstChild.Data = raw_text
+			wg.Add(1)
+			go func() {
+				fmt.Printf("Decrypting note: %s\n", title)
+				raw_text, err := decrypt_note(contentNode.InnerText())
+				if err != nil {
+					ch <- DecryptResult{err: err, text: "", node: noteNode}
+				} else {
+					ch <- DecryptResult{err: nil, text: raw_text, node: noteNode}
+				}
+				wg.Done()
+			}()
+		}
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	for result := range ch {
+		noteNode := result.node
+		if result.err != nil {
+			fmt.Printf("Note decryption failed, error: %s\n", result.err.Error())
+		} else {
+			contentNode := noteNode.SelectElement("content")
+			contentNode.FirstChild.Data = result.text
 			contentNode.RemoveAttr("encoding")
 		}
 	}
+
 	outfile, err := os.OpenFile(savepath, os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -182,7 +210,7 @@ func main() {
 
 	if err != nil {
 		abs_path, _ := filepath.Abs(path)
-		fmt.Printf("Path %s not exists", abs_path)
+		fmt.Printf("Path %s not exists\n", abs_path)
 		return
 	}
 	if states.IsDir() {
